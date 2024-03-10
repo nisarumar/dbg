@@ -1,10 +1,15 @@
-cmake_minimum_required (VERSION 3.0)
-project (MiniDbg)
+cmake_minimum_required(VERSION 3.22)
+project(dbg
+        VERSION 1.0
+	DESCRIPTION "dbg built on ptrace" )
 
 add_compile_options(-std=c++14)
+add_compile_options(-Wall -Wextra -Wpedantic)
 
 include_directories(ext/libelfin ext/linenoise include)
-add_executable(minidbg src/minidbg.cpp ext/linenoise/linenoise.c)
+
+add_executable(dbg)
+target_sources (dbg PRIVATE "src/dbg.cpp" "ext/linenoise/linenoise.c")
 
 add_executable(hello examples/hello.cpp)
 set_target_properties(hello
@@ -24,7 +29,7 @@ add_custom_target(
    COMMAND make
    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/ext/libelfin
 )
-target_link_libraries(minidbg
+target_link_libraries(dbg
                       ${PROJECT_SOURCE_DIR}/ext/libelfin/dwarf/libdwarf++.so
                       ${PROJECT_SOURCE_DIR}/ext/libelfin/elf/libelf++.so)
-add_dependencies(minidbg libelfin)
+add_dependencies(dbg libelfin)
