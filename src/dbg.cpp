@@ -11,36 +11,41 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unordered_map>
 
 #include "dbg.h"
-
+#include "breakpoint.hpp"
 #include "linenoise.h"
 
-struct dbg::dbg_data {
+struct dbg::prg_data {
 	std::string prog_name;
 	pid_t pid;
 };
-
-dbg::debugger::debugger(dbg::dbg_data&& init):p_dbg_data(std::make_unique<dbg_data>(std::move(init))){}
+struct dbg::debugger::dbg_data{
+	std::unordered_map<std::intptr_t, dbg::breakpoint> mp;
+};
+dbg::debugger::debugger(dbg::prg_data&& init):p_prg_data(std::make_shared<prg_data>(std::move(init))), p_dbg_data(std::make_unique<dbg_data>()){}
 dbg::debugger::~debugger() = default;
 dbg::debugger::debugger(dbg::debugger &&rhs) = default;
 dbg::debugger& dbg::debugger::operator=(dbg::debugger &&rhs) = default;
-dbg::debugger::debugger(const dbg::debugger& rhs):p_dbg_data(nullptr)
+dbg::debugger::debugger(const dbg::debugger& rhs):p_prg_data(nullptr), p_dbg_data(nullptr)
 {
 	if (rhs.p_dbg_data) p_dbg_data = std::make_unique<dbg_data>(*rhs.p_dbg_data);
+	p_prg_data = rhs.p_prg_data;
 }
 dbg::debugger& dbg::debugger::operator=(const dbg::debugger &rhs)
 {
 	if (!rhs.p_dbg_data) p_dbg_data.reset();
 	else if (!p_dbg_data) p_dbg_data = std::make_unique<dbg_data>(*rhs.p_dbg_data);
 	else *p_dbg_data = *rhs.p_dbg_data;
+	p_prg_data = rhs.p_prg_data;
 }
 
 void dbg::debugger::continue_execution() {
-	ptrace(PTRACE_CONT, p_dbg_data->pid, nullptr, nullptr);
+	ptrace(PTRACE_CONT, p_prg_data->pid, nullptr, nullptr);
 	int wait_status;
 	auto options = 0;
-	waitpid(p_dbg_data->pid, &wait_status, options);
+	waitpid(p_prg_data->pid, &wait_status, options);
 }
 
 auto split(const std::string &s, char delimiter) {
@@ -49,10 +54,10 @@ auto split(const std::string &s, char delimiter) {
 	std::string item;
 
 	while (std::getline(ss,item,delimiter)) {
-		out.push_back(item);
+		if(!item.empty())
+			out.push_back(item);
 	}
-
-	return std::move(out);
+	return out;
 }
 
 auto is_prefix(const std::string& s, const std::string& of) {
@@ -62,11 +67,17 @@ auto is_prefix(const std::string& s, const std::string& of) {
 
 void dbg::debugger::dispatcher(const std::string & line) {
 	auto args = split(line, ',');
+	if (args.empty())
+		return;
 	auto command = args[0];
 
-
-	if (is_prefix(command, "contine")){
+	if (is_prefix(command, "continue")){
 		continue_execution();
+	}
+	else if (is_prefix(command, "break"))
+	{
+		std::string addr (args[1], 2);
+		set_brk(std::stoi(addr,0,16));
 	}
 	else
 	{
@@ -76,7 +87,7 @@ void dbg::debugger::dispatcher(const std::string & line) {
 
 void dbg::debugger::event_loop() {
 	auto wait_status{0}, options{0};
-	waitpid(p_dbg_data->pid, &wait_status, options);
+	waitpid(p_prg_data->pid, &wait_status, options);
 
 	char* line = nullptr;
 	while((line= linenoise("dbg> ")) != nullptr){
@@ -92,6 +103,13 @@ void execute_tracee (const std::string& prog_name) {
         return;
     }
     execl(prog_name.c_str(), prog_name.c_str(), nullptr);
+}
+
+void dbg::debugger::set_brk(std::intptr_t addr) {
+	std::cout<<"Set break point at address 0x"<<std::hex<<addr<<std::endl;
+	breakpoint bpObj {p_prg_data->pid, addr};
+	bpObj.set_brk();
+	p_dbg_data->mp[addr]=bpObj;
 }
 
 int main(int argc, char* argv[]) {

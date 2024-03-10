@@ -7,9 +7,8 @@ add_compile_options(-std=c++14)
 add_compile_options(-Wall -Wextra -Wpedantic)
 
 include_directories(ext/libelfin ext/linenoise include)
-
 add_executable(dbg)
-target_sources (dbg PRIVATE "src/dbg.cpp" "ext/linenoise/linenoise.c")
+target_sources (dbg PRIVATE "src/dbg.cpp" "src/breakpoint.cpp" "ext/linenoise/linenoise.c")
 
 add_executable(hello examples/hello.cpp)
 set_target_properties(hello
