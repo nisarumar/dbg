@@ -11,16 +11,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <string>
 #include <unordered_map>
 
+#include "shared_data.h"
 #include "dbg.h"
 #include "breakpoint.hpp"
 #include "linenoise.h"
 
-struct dbg::prg_data {
-	std::string prog_name;
-	pid_t pid;
-};
 struct dbg::debugger::dbg_data{
 	std::unordered_map<std::intptr_t, dbg::breakpoint> mp;
 };
@@ -107,7 +105,7 @@ void execute_tracee (const std::string& prog_name) {
 
 void dbg::debugger::set_brk(std::intptr_t addr) {
 	std::cout<<"Set break point at address 0x"<<std::hex<<addr<<std::endl;
-	breakpoint bpObj {p_prg_data->pid, addr};
+	breakpoint bpObj {p_prg_data, addr};
 	bpObj.set_brk();
 	p_dbg_data->mp[addr]=bpObj;
 }

@@ -5,7 +5,9 @@
 #include<cstdint>
 #include<sys/ptrace.h>
 #include<memory>
-#include "dbg.h"
+#include <string>
+
+#include "shared_data.h"
 #include "breakpoint.hpp"
 
 struct dbg::breakpoint::brkpt_data{
@@ -24,7 +26,7 @@ dbg::breakpoint::breakpoint(const dbg::breakpoint & rhs): p_brkpt_data(nullptr) 
 	{
 		p_brkpt_data = std::make_unique<brkpt_data>(*rhs.p_brkpt_data);
 	}
-
+	p_prg_data = rhs.p_prg_data;
 }
 
 dbg::breakpoint& dbg::breakpoint::operator=(const dbg::breakpoint & rhs) {
@@ -33,10 +35,11 @@ dbg::breakpoint& dbg::breakpoint::operator=(const dbg::breakpoint & rhs) {
 		p_brkpt_data.reset();
 	}else if (!p_brkpt_data) p_brkpt_data = std::make_unique<brkpt_data>(*rhs.p_brkpt_data);
 	else *p_brkpt_data = *rhs.p_brkpt_data;
+
+	p_prg_data = rhs.p_prg_data;
 }
 
-dbg::breakpoint::breakpoint(pid_t program_pid, std::intptr_t addr):p_brkpt_data(std::make_unique<brkpt_data>()) {
-	p_brkpt_data->pid = program_pid;
+dbg::breakpoint::breakpoint(std::shared_ptr<prg_data> ptrPrgData, std::intptr_t addr):p_prg_data{ptrPrgData}, p_brkpt_data(std::make_unique<brkpt_data>()) {
 	p_brkpt_data->addr = addr;
 	p_brkpt_data->enabled = false;
 	p_brkpt_data->saved_data = 0;
@@ -44,14 +47,14 @@ dbg::breakpoint::breakpoint(pid_t program_pid, std::intptr_t addr):p_brkpt_data(
 
 void dbg::breakpoint::set_brk()
 {
-	auto data = ptrace(PTRACE_PEEKDATA, p_brkpt_data->pid, p_brkpt_data->addr, nullptr);
+	auto data = ptrace(PTRACE_PEEKDATA, p_prg_data->pid, p_brkpt_data->addr, nullptr);
 	p_brkpt_data->saved_data = static_cast<uint8_t> (data & 0xFF);
-	ptrace(PTRACE_POKEDATA, p_brkpt_data->pid, ((data & ~0xFF) | 0xCC)); //set lower byte of data at the address to opcode of 'int 3'
+	ptrace(PTRACE_POKEDATA, p_prg_data->pid, ((data & ~0xFF) | 0xCC)); //set lower byte of data at the address to opcode of 'int 3'
 	p_brkpt_data->enabled = true;
 }
 
 void dbg::breakpoint::unset_brk() {
-	auto data = ptrace(PTRACE_PEEKDATA, p_brkpt_data->pid, p_brkpt_data->addr, nullptr);
-	ptrace(PTRACE_POKEDATA, p_brkpt_data->pid, ((data & ~0xFF) | p_brkpt_data->saved_data)); //set lower byte of data at the address to opcode of 'int 3'
+	auto data = ptrace(PTRACE_PEEKDATA, p_prg_data->pid, p_brkpt_data->addr, nullptr);
+	ptrace(PTRACE_POKEDATA, p_prg_data->pid, ((data & ~0xFF) | p_brkpt_data->saved_data)); //set lower byte of data at the address to opcode of 'int 3'
 	p_brkpt_data->enabled = false;
 }
