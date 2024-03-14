@@ -64,7 +64,7 @@ auto is_prefix(const std::string& s, const std::string& of) {
 }
 
 void dbg::debugger::dispatcher(const std::string & line) {
-	auto args = split(line, ',');
+	auto args = split(line, ' ');
 	if (args.empty())
 		return;
 	auto command = args[0];
@@ -75,7 +75,7 @@ void dbg::debugger::dispatcher(const std::string & line) {
 	else if (is_prefix(command, "break"))
 	{
 		std::string addr (args[1], 2);
-		set_brk(std::stoi(addr,0,16));
+		set_brk(std::stol(addr,0,16));
 	}
 	else
 	{

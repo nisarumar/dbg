@@ -6,6 +6,9 @@
 #include<sys/ptrace.h>
 #include<memory>
 #include <string>
+#include <iostream>
+#include <cerrno>
+#include <cstring>
 
 #include "shared_data.h"
 #include "breakpoint.hpp"
@@ -49,12 +52,29 @@ void dbg::breakpoint::set_brk()
 {
 	auto data = ptrace(PTRACE_PEEKDATA, p_prg_data->pid, p_brkpt_data->addr, nullptr);
 	p_brkpt_data->saved_data = static_cast<uint8_t> (data & 0xFF);
-	ptrace(PTRACE_POKEDATA, p_prg_data->pid, ((data & ~0xFF) | 0xCC)); //set lower byte of data at the address to opcode of 'int 3'
+	uint64_t data_with_int3 = ((data & ~0xFF ) | 0xCC);
+	auto err = ptrace(PTRACE_POKEDATA, p_prg_data->pid, p_brkpt_data->addr, ((data & ~0xFF) | 0xCC)); //set lower byte of data at the address to opcode of 'int 3'
+	if (err)
+	{
+		std::cout<<"Error Setting brkpt!:"<<std::strerror(errno)<<std::endl;
+		p_brkpt_data->saved_data = 0;
+		return;
+
+	}
 	p_brkpt_data->enabled = true;
 }
 
 void dbg::breakpoint::unset_brk() {
-	auto data = ptrace(PTRACE_PEEKDATA, p_prg_data->pid, p_brkpt_data->addr, nullptr);
-	ptrace(PTRACE_POKEDATA, p_prg_data->pid, ((data & ~0xFF) | p_brkpt_data->saved_data)); //set lower byte of data at the address to opcode of 'int 3'
-	p_brkpt_data->enabled = false;
+	if (p_brkpt_data->enabled)
+	{
+		auto data = ptrace(PTRACE_PEEKDATA, p_prg_data->pid, p_brkpt_data->addr, nullptr);
+		auto err = ptrace(PTRACE_POKEDATA, p_prg_data->pid, ((data & ~0xFF) | p_brkpt_data->saved_data)); //restore the lower byte to the saved value
+		if (err)
+		{
+			std::cout<<"Error unsetting brkpt!:"<<std::strerror(errno)<<std::endl;
+			return;
+		}
+		p_brkpt_data->saved_data = 0;
+		p_brkpt_data->enabled = false;
+	}
 }
