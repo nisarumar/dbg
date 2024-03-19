@@ -17,6 +17,7 @@
 #include "shared_data.h"
 #include "dbg.h"
 #include "breakpoint.hpp"
+#include "registers.hpp"
 #include "linenoise.h"
 
 struct dbg::debugger::dbg_data{
@@ -76,6 +77,11 @@ void dbg::debugger::dispatcher(const std::string & line) {
 	{
 		std::string addr (args[1], 2);
 		set_brk(std::stol(addr,0,16));
+	}
+	else if (is_prefix(command, "register"))
+	{
+		std::string reg (args[1],0);
+		std::cout<<std::hex<<get_register_value(p_prg_data->pid,reg)<<std::endl;
 	}
 	else
 	{

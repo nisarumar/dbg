@@ -3,7 +3,7 @@ project(dbg
         VERSION 1.0
 	DESCRIPTION "dbg built on ptrace" )
 
-add_compile_options(-std=c++14)
+add_compile_options(-std=c++17)
 add_compile_options(-Wall -Wextra -Wpedantic)
 
 include_directories(ext/libelfin ext/linenoise include)
@@ -21,7 +21,6 @@ set_target_properties(variable
 add_executable(unwinding examples/stack_unwinding.cpp)
 set_target_properties(unwinding
                       PROPERTIES COMPILE_FLAGS "-g -O0")
-
 
 add_custom_target(
    libelfin

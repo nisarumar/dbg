@@ -1,100 +1,116 @@
-#ifndef MINIDBG_REGISTERS_HPP
-#define MINIDBG_REGISTERS_HPP
-
+#ifndef DBG_REGISTERS_HPP
+#define DBG_REGISTERS_HPP
+#include <array>
+#include <type_traits>
 #include <sys/user.h>
+#include <iostream>
+#include <string_view>
+#include <utility>
+#include <variant>
 #include <algorithm>
+#include <cstring>
+#include <sys/ptrace.h>
+#include "map_macro.h"
 
-namespace minidbg {
-    enum class reg {
-        rax, rbx, rcx, rdx,
-        rdi, rsi, rbp, rsp,
-        r8,  r9,  r10, r11,
-        r12, r13, r14, r15,
-        rip, rflags,    cs,
-        orig_rax, fs_base,
-        gs_base,
-        fs, gs, ss, ds, es
-    };
+namespace dbg {
 
-    static constexpr std::size_t n_registers = 27;
+#define GET_FIELD(STRUCT, FIELD)    ((STRUCT *)0)->FIELD
 
-    struct reg_descriptor {
-        reg r;
-        int dwarf_r;
-        std::string name;
-    };
+	MK_ENUM(regs, r15,r14,r13,r12,rbp,rbx,r11,r10,r9,r8,rax,rcx,rdx,rsi,
+					rdi,orig_rax,rip,cs,eflags,rsp,ss,fs_base,gs_base,ds,es,fs,gs);
 
-    //have a look in /usr/include/sys/user.h for how to lay this out
-    static const std::array<reg_descriptor, n_registers> g_register_descriptors {{
-            { reg::r15, 15, "r15" },
-            { reg::r14, 14, "r14" },
-            { reg::r13, 13, "r13" },
-            { reg::r12, 12, "r12" },
-            { reg::rbp, 6, "rbp" },
-            { reg::rbx, 3, "rbx" },
-            { reg::r11, 11, "r11" },
-            { reg::r10, 10, "r10" },
-            { reg::r9, 9, "r9" },
-            { reg::r8, 8, "r8" },
-            { reg::rax, 0, "rax" },
-            { reg::rcx, 2, "rcx" },
-            { reg::rdx, 1, "rdx" },
-            { reg::rsi, 4, "rsi" },
-            { reg::rdi, 5, "rdi" },
-            { reg::orig_rax, -1, "orig_rax" },
-            { reg::rip, -1, "rip" },
-            { reg::cs, 51, "cs" },
-            { reg::rflags, 49, "eflags" },
-            { reg::rsp, 7, "rsp" },
-            { reg::ss, 52, "ss" },
-            { reg::fs_base, 58, "fs_base" },
-            { reg::gs_base, 59, "gs_base" },
-            { reg::ds, 53, "ds" },
-            { reg::es, 50, "es" },
-            { reg::fs, 54, "fs" },
-            { reg::gs, 55, "gs" },
-    }};
+	constexpr std::array dwarf_regs {15,14,13,12,6,3,11,10,9,8,0,2,1,4,5,-1,-1,51,49,7,52,58,59,53,50,54,55};
 
-    uint64_t get_register_value(pid_t pid, reg r) {
-        user_regs_struct regs;
-        ptrace(PTRACE_GETREGS, pid, nullptr, &regs);
-        auto it = std::find_if(begin(g_register_descriptors), end(g_register_descriptors),
-                               [r](auto&& rd) { return rd.r == r; });
+	template<typename E>
+	constexpr auto toUtype(E enumerator) noexcept -> decltype(std::underlying_type_t<E>{})
+	{
+		return static_cast<std::underlying_type_t<E>> (enumerator);
+	}
 
-        return *(reinterpret_cast<uint64_t*>(&regs) + (it - begin(g_register_descriptors)));
-    }
+	using type = decltype(GET_FIELD(user_regs_struct,rax));
 
-    void set_register_value(pid_t pid, reg r, uint64_t value) {
-        user_regs_struct regs;
-        ptrace(PTRACE_GETREGS, pid, nullptr, &regs);
-        auto it = std::find_if(begin(g_register_descriptors), end(g_register_descriptors),
-                               [r](auto&& rd) { return rd.r == r; });
+	constexpr auto reg_num = sizeof(user_regs_struct)/sizeof(type);
 
-        *(reinterpret_cast<uint64_t*>(&regs) + (it - begin(g_register_descriptors))) = value;
-        ptrace(PTRACE_SETREGS, pid, nullptr, &regs);
-    }
+	struct arch_regs{
+		union{
+			user_regs_struct ptrace_regs;
+			std::array<type, reg_num>reg_array;
+		};
+	};
 
-    uint64_t get_register_value_from_dwarf_register (pid_t pid, unsigned regnum) {
-        auto it = std::find_if(begin(g_register_descriptors), end(g_register_descriptors),
-                               [regnum](auto&& rd) { return rd.dwarf_r == regnum; });
-        if (it == end(g_register_descriptors)) {
-            throw std::out_of_range{"Unknown dwarf register"};
-        }
+	using pair_type = std::pair<std::string_view, int>;
+	using arr_type  = std::array<pair_type , reg_num>;
 
-        return get_register_value(pid, it->r);
-    }
+	template<typename P>
+	constexpr P fillOutHelper(unsigned I)
+	{
+		return {regs_to_strings[I], dwarf_regs[I]};
+	}
 
-    std::string get_register_name(reg r) {
-        auto it = std::find_if(begin(g_register_descriptors), end(g_register_descriptors),
-                               [r](auto&& rd) { return rd.r == r; });
-        return it->name;
-    }
+	template<typename Pair, std::size_t ... Is>
+	constexpr arr_type fillOut (std::index_sequence<Is...>)
+	{
+		return {fillOutHelper<Pair>(Is)... };
+	}
 
-    reg get_register_from_name(const std::string& name) {
-        auto it = std::find_if(begin(g_register_descriptors), end(g_register_descriptors),
-                               [name](auto&& rd) { return rd.name == name; });
-        return it->r;
-    }
+	constexpr static arr_type g_reg_descriptors = fillOut<pair_type>(std::make_index_sequence<reg_num>{});
+
+	auto get_register_value(pid_t pid, regs r)
+	{
+		arch_regs regs;
+		auto err = ptrace(PTRACE_GETREGS, pid, nullptr, &regs);
+		if (err){
+			std::cout<<"Ptrace:: Error Getting Regs!:"<<std::strerror(errno)<<std::endl;
+			return 0ULL;
+		}
+		return (regs.reg_array[toUtype(r)]);
+	}
+
+	auto get_register_value(pid_t pid, const std::string& r)
+	{
+		auto it = std::find(std::begin(regs_to_strings),std::end(regs_to_strings),r);
+		if (it != std::end(regs_to_strings))
+		{
+			return get_register_value(pid, regs_enum_arr[std::distance(std::begin(regs_to_strings),it)]);
+		}
+		else {
+			std::cerr<<"Unkown Reg"<<std::endl;
+			return 0ULL;
+		}
+	}
+
+	auto get_register_value(pid_t pid, decltype(dwarf_regs[0]) r)
+	{
+		auto it = std::find(std::begin(dwarf_regs),std::end(dwarf_regs),r);
+		if (it != std::end(dwarf_regs))
+		{
+			return get_register_value(pid, regs_enum_arr[std::distance(std::begin(dwarf_regs),it)]);
+		}
+		else {
+			std::cerr << "Unkown Reg" << std::endl;
+			return 0ULL;
+		}
+	}
+
+	void set_register_value(pid_t pid, regs r, uint64_t value)
+	{
+		arch_regs regs;
+		ptrace(PTRACE_GETREGS, pid, nullptr, &regs);
+		regs.reg_array[toUtype(r)] = value;
+		ptrace(PTRACE_SETREGS, pid, nullptr, &regs);
+	}
+
+	void set_register_value(pid_t pid, const std::string & r, uint64_t value)
+	{
+
+	}
+
+	void set_register_value(pid_t pid, decltype(dwarf_regs[0]) r, uint64_t value)
+	{
+
+	}
+
+
 }
 
 #endif
